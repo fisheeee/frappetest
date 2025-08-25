@@ -92,6 +92,18 @@ services:
     platform: linux/amd64
     command: bench schedule
 
+  redis-cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-cache-data:/data
+
+  redis-queue:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-queue-data:/data
+
 # ERPNext requires local assets access (Frappe does not)
 volumes:
   sites:
