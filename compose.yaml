@@ -1,7 +1,4 @@
 x-customizable-image: &customizable_image
-  # By default the image used only contains the `frappe` and `erpnext` apps.
-  # See https://github.com/frappe/frappe_docker/blob/main/docs/custom-apps.md
-  # about using custom images.
   image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
   pull_policy: ${PULL_POLICY:-always}
   restart: ${RESTART_POLICY:-unless-stopped}
@@ -17,13 +14,40 @@ x-backend-defaults: &backend_defaults
     - sites:/home/frappe/frappe-bench/sites
 
 services:
+  # Database
+  db:
+    image: mariadb:10.6
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: erpnext
+      MYSQL_USER: erpnext
+      MYSQL_PASSWORD: erpnext
+    volumes:
+      - db-data:/var/lib/mysql
+    ports:
+      - 3306:3306
+
+  # Redis Cache
+  redis-cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-cache-data:/data
+
+  # Redis Queue
+  redis-queue:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-queue-data:/data
+
   configurator:
     <<: *backend_defaults
     platform: linux/amd64
     entrypoint:
       - bash
       - -c
-    # add redis_socketio for backward compatibility
     command:
       - >
         ls -1 apps > sites/apps.txt;
@@ -34,17 +58,28 @@ services:
         bench set-config -g redis_socketio "redis://$$REDIS_QUEUE";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
     environment:
-      DB_HOST: ${DB_HOST:-}
-      DB_PORT: ${DB_PORT:-}
-      REDIS_CACHE: ${REDIS_CACHE:-}
-      REDIS_QUEUE: ${REDIS_QUEUE:-}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      REDIS_CACHE: ${REDIS_CACHE:-redis-cache:6379}
+      REDIS_QUEUE: ${REDIS_QUEUE:-redis-queue:6379}
       SOCKETIO_PORT: 9000
-    depends_on: {}
+    depends_on:
+      db:
+        condition: service_started
+      redis-cache:
+        condition: service_started
+      redis-queue:
+        condition: service_started
     restart: on-failure
 
   backend:
     <<: *backend_defaults
     platform: linux/amd64
+    depends_on:
+      - configurator
+      - db
+      - redis-cache
+      - redis-queue
 
   frontend:
     <<: *customizable_image
@@ -52,7 +87,7 @@ services:
     command:
       - nginx-entrypoint.sh
     ports:
-      - "9000:9000"
+      - 8080:8080
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
@@ -76,37 +111,40 @@ services:
       - /home/frappe/frappe-bench/apps/frappe/socketio.js
     volumes:
       - sites:/home/frappe/frappe-bench/sites
+    depends_on:
+      - configurator
+      - redis-cache
+      - redis-queue
 
   queue-short:
     <<: *backend_defaults
     platform: linux/amd64
     command: bench worker --queue short,default
+    depends_on:
+      - configurator
+      - db
+      - redis-queue
 
   queue-long:
     <<: *backend_defaults
     platform: linux/amd64
     command: bench worker --queue long,default,short
+    depends_on:
+      - configurator
+      - db
+      - redis-queue
 
   scheduler:
     <<: *backend_defaults
     platform: linux/amd64
     command: bench schedule
+    depends_on:
+      - configurator
+      - db
+      - redis-queue
 
-  redis-cache:
-    image: redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - redis-cache-data:/data
-
-  redis-queue:
-    image: redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - redis-queue-data:/data
-
-# ERPNext requires local assets access (Frappe does not)
 volumes:
   sites:
   db-data:
-  reddis-cache-data:
+  redis-cache-data:
   redis-queue-data:
