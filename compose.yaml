@@ -87,7 +87,7 @@ services:
     command:
       - nginx-entrypoint.sh
     ports:
-      - 8080:8080
+      - 6000:6000
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
