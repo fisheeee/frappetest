@@ -51,6 +51,8 @@ services:
     platform: linux/amd64
     command:
       - nginx-entrypoint.sh
+    ports:
+      - "9000:9000"
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
