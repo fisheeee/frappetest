@@ -107,3 +107,6 @@ services:
 # ERPNext requires local assets access (Frappe does not)
 volumes:
   sites:
+  db-data:
+  reddis-cache-data:
+  redis-queue-data:
